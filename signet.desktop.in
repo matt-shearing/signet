@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Signet
+GenericName=PDF signing
+Comment=A tiny local, offline PDF signer
+Exec=@BIN@ %f
+Icon=signet
+Terminal=false
+MimeType=application/pdf;
+Categories=Office;
+StartupNotify=false
