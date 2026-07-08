@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
-Name=Signet
+Name=Signet — PDF signing
 GenericName=PDF signing
 Comment=A tiny local, offline PDF signer
 Exec=@BIN@ %f
-Icon=signet
+Icon=@ICON@
 Terminal=false
 MimeType=application/pdf;
 Categories=Office;

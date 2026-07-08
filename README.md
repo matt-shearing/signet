@@ -12,8 +12,9 @@ case: *"I just need to sign this PDF and send it back."*
 
 ### Arch Linux / EndeavourOS (AUR)
 ```
-yay -S signet          # or: paru -S signet
+yay -S signet-pdf      # or: paru -S signet-pdf
 ```
+(The AUR package is `signet-pdf` — plain `signet` is already taken by an unrelated project.)
 
 ### Any Linux (from source)
 ```
@@ -46,7 +47,20 @@ python3 signet.py sample/Sample-Agreement.pdf   # try it on the included demo do
 3. **Download signed PDF** → `<name>-SIGNED.pdf`. **Done** closes the session.
 
 ## Screenshots
-_(add images to `screenshots/`. There's a public-safe demo doc at `sample/Sample-Agreement.pdf` to sign for them.)_
+
+Open a PDF — it loads straight into the signing view:
+
+![Signet with a PDF loaded](screenshots/1.png)
+
+Create your signature once (draw or type) — it's saved for next time:
+
+![Add a signature](screenshots/2.png)
+
+Drop it on the page, drag / resize to fit, then download the signed PDF:
+
+![Signature placed on the page](screenshots/3.png)
+
+_(Try it on the included `sample/Sample-Agreement.pdf`.)_
 
 ## How it works
 Single HTML page + three vendored, open-source libraries:
