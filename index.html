@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signet — local PDF signing</title>
+<style>
+  :root{ --ink:#0B0B0C; --grey:#6E6E73; --line:#E0E0E4; --bg:#F4F4F6; --accent:#0B0B0C; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg)}
+  header{position:sticky;top:0;z-index:50;background:#fff;border-bottom:1px solid var(--line);
+         display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px}
+  header .brand{font-weight:700;letter-spacing:.02em;margin-right:8px}
+  header .brand small{font-weight:400;color:var(--grey)}
+  button{font:inherit;border:1px solid var(--line);background:#fff;color:var(--ink);
+         padding:7px 12px;border-radius:8px;cursor:pointer}
+  button:hover{border-color:#bbb}
+  button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  button.armed{background:#1657d6;color:#fff;border-color:#1657d6}
+  .spacer{flex:1}
+  #hint{font-size:13px;color:var(--grey);padding:6px 14px;background:#fff;border-bottom:1px solid var(--line)}
+  #stage{padding:24px;display:flex;flex-direction:column;align-items:center;gap:18px}
+  .page-wrap{position:relative;box-shadow:0 2px 14px rgba(0,0,0,.12);background:#fff}
+  .page-wrap canvas{display:block}
+  .overlay{position:absolute;inset:0}
+  .field{position:absolute;border:1px dashed transparent;cursor:move;min-width:24px;min-height:18px}
+  .field:hover,.field.sel{border-color:#1657d6;background:rgba(22,87,214,.04)}
+  .field img{width:100%;height:100%;object-fit:contain;pointer-events:none;user-select:none}
+  .field .txt{width:100%;height:100%;outline:none;white-space:pre;overflow:hidden;
+              display:flex;align-items:center;padding:0 2px}
+  .field .rm{position:absolute;top:-11px;right:-11px;width:20px;height:20px;border-radius:50%;
+             background:#d33;color:#fff;border:none;font-size:13px;line-height:20px;text-align:center;
+             cursor:pointer;display:none}
+  .field.sel .rm{display:block}
+  .field .grip{position:absolute;right:-6px;bottom:-6px;width:12px;height:12px;background:#1657d6;
+               border-radius:2px;cursor:nwse-resize;display:none}
+  .field.sel .grip{display:block}
+  /* modal */
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;
+            justify-content:center;z-index:100}
+  .modal-bg.open{display:flex}
+  .modal{background:#fff;border-radius:12px;padding:18px;width:min(560px,92vw)}
+  .modal h3{margin:0 0 10px}
+  .tabs{display:flex;gap:6px;margin-bottom:10px}
+  .tabs button.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  #sigpad{border:1px solid var(--line);border-radius:8px;width:100%;height:180px;touch-action:none;background:#fff}
+  #typeWrap input{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+  #typePreview{height:120px;display:flex;align-items:center;justify-content:center;
+               font-family:"Segoe Script","Bradley Hand",cursive;font-size:44px;border:1px solid var(--line);
+               border-radius:8px;margin-top:10px}
+  .saved{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .saved .chip{border:1px solid var(--line);border-radius:8px;padding:6px;cursor:pointer;background:#fff}
+  .saved .chip img{height:34px;display:block}
+  .row{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+  .muted{color:var(--grey);font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">Signet <small>· local PDF signing</small></span>
+  <button id="openBtn">Open PDF…</button>
+  <input id="fileInput" type="file" accept="application/pdf" hidden>
+  <span style="width:1px;height:22px;background:var(--line)"></span>
+  <button id="addSig">+ Signature</button>
+  <button id="addText">+ Text</button>
+  <button id="addDate">+ Date</button>
+  <button id="manageSig">My signatures</button>
+  <span class="spacer"></span>
+  <button id="downloadBtn" class="primary">Download signed PDF</button>
+  <button id="doneBtn" title="Close this signing session">Done</button>
+</header>
+<div id="hint">Open a PDF, then click <b>+ Signature / + Text / + Date</b> and click on the page to drop a field. Drag to move, corner to resize, click ✕ to remove. Your signature is saved in this browser for next time.</div>
+<div id="stage"><p class="muted">No PDF loaded. Click <b>Open PDF…</b> to begin.</p></div>
+
+<!-- signature modal -->
+<div class="modal-bg" id="sigModal">
+  <div class="modal">
+    <h3>Add a signature</h3>
+    <div class="tabs">
+      <button data-tab="draw" class="active">Draw</button>
+      <button data-tab="type">Type</button>
+    </div>
+    <div id="drawWrap"><canvas id="sigpad"></canvas>
+      <div class="row" style="justify-content:space-between">
+        <button id="sigClear">Clear</button><span class="muted">Sign with mouse / trackpad / touch</span>
+      </div>
+    </div>
+    <div id="typeWrap" style="display:none">
+      <input id="typeInput" placeholder="Type your name">
+      <div id="typePreview"></div>
+    </div>
+    <div class="saved" id="savedSigs"></div>
+    <div class="row">
+      <button id="sigCancel">Cancel</button>
+      <button id="sigSave" class="primary">Save &amp; use</button>
+    </div>
+  </div>
+</div>
+
+<!-- payload.js is written by the launcher in no-server (file://) mode; 404s harmlessly otherwise -->
+<script src="payload.js" onerror="void 0"></script>
+<script src="vendor/pdf.min.js"></script>
+<script src="vendor/pdf-lib.min.js"></script>
+<script src="vendor/signature_pad.umd.min.js"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
+
+const state = {
+  pdfBytes:null,      // ArrayBuffer of the loaded PDF (for pdf-lib export)
+  pages:[],           // [{pdfW,pdfH,scale,overlay}]
+  fields:[],          // field DOM elements carry data-* ; we keep refs here
+  arm:null,           // 'sig'|'text'|'date' pending placement
+  currentSig:null,    // dataURL of the signature to drop
+};
+const FITW = 820;     // target render width in px
+
+/* ---------- load + render ---------- */
+document.getElementById('openBtn').onclick = ()=>fileInput.click();
+fileInput.onchange = async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  state.pdfBytes = await f.arrayBuffer();
+  state.fileName = f.name.replace(/\.pdf$/i,'');
+  await renderPdf(state.pdfBytes.slice(0));
+};
+async function renderPdf(buf){
+  const stage=document.getElementById('stage'); stage.innerHTML=''; state.pages=[]; state.fields=[];
+  const doc = await pdfjsLib.getDocument({data:buf}).promise;
+  for(let i=1;i<=doc.numPages;i++){
+    const page=await doc.getPage(i);
+    const base=page.getViewport({scale:1});
+    const scale=FITW/base.width;
+    const vp=page.getViewport({scale});
+    const wrap=document.createElement('div'); wrap.className='page-wrap';
+    wrap.style.width=vp.width+'px'; wrap.style.height=vp.height+'px';
+    const canvas=document.createElement('canvas'); canvas.width=vp.width; canvas.height=vp.height;
+    const overlay=document.createElement('div'); overlay.className='overlay';
+    wrap.appendChild(canvas); wrap.appendChild(overlay); stage.appendChild(wrap);
+    await page.render({canvasContext:canvas.getContext('2d'),viewport:vp}).promise;
+    const idx=i-1;
+    state.pages[idx]={pdfW:base.width,pdfH:base.height,scale,overlay};
+    overlay.addEventListener('click',ev=>{ if(!state.arm) return; if(ev.target!==overlay) return;
+      const r=overlay.getBoundingClientRect(); placeField(idx, ev.clientX-r.left, ev.clientY-r.top); });
+  }
+  disarm();
+}
+
+/* ---------- fields ---------- */
+document.getElementById('addSig').onclick = ()=>{ if(!state.currentSig){ openSigModal(); } else arm('sig'); };
+document.getElementById('addText').onclick= ()=>arm('text');
+document.getElementById('addDate').onclick= ()=>arm('date');
+function arm(t){ state.arm=t; ['addSig','addText','addDate'].forEach(id=>document.getElementById(id).classList.remove('armed'));
+  const map={sig:'addSig',text:'addText',date:'addDate'}; document.getElementById(map[t]).classList.add('armed');
+  hint('Click on the page where you want the '+t+'.'); }
+function disarm(){ state.arm=null; ['addSig','addText','addDate'].forEach(id=>document.getElementById(id).classList.remove('armed')); }
+
+function placeField(pageIdx,x,y){
+  const type=state.arm; const ov=state.pages[pageIdx].overlay;
+  const el=document.createElement('div'); el.className='field'; el.dataset.type=type; el.dataset.page=pageIdx;
+  let w,h;
+  if(type==='sig'){ w=180;h=64; const img=document.createElement('img'); img.src=state.currentSig; el.appendChild(img);
+    el.dataset.dataurl=state.currentSig; }
+  else{ w=type==='date'?150:200; h=26; const t=document.createElement('div'); t.className='txt'; t.contentEditable=true;
+    t.style.fontSize='15px'; t.textContent = type==='date'? todayStr() : 'Text';
+    el.appendChild(t); }
+  el.style.left=Math.max(0,x)+'px'; el.style.top=Math.max(0,y)+'px'; el.style.width=w+'px'; el.style.height=h+'px';
+  const rm=document.createElement('button'); rm.className='rm'; rm.textContent='✕';
+  rm.onclick=e=>{e.stopPropagation(); el.remove(); state.fields=state.fields.filter(f=>f!==el);};
+  const grip=document.createElement('div'); grip.className='grip'; el.appendChild(rm); el.appendChild(grip);
+  ov.appendChild(el); state.fields.push(el);
+  makeInteractive(el,grip);
+  select(el); disarm(); hint('Placed. Drag to move, corner to resize, ✕ to delete.');
+}
+function select(el){ document.querySelectorAll('.field.sel').forEach(f=>f.classList.remove('sel')); el.classList.add('sel'); }
+function makeInteractive(el,grip){
+  let mode=null,sx,sy,ox,oy,ow,oh;
+  el.addEventListener('mousedown',e=>{ if(e.target.classList.contains('txt')&&e.detail>1)return;
+    if(e.target===grip)return; if(e.target.isContentEditable && document.activeElement===e.target)return;
+    select(el); mode='move'; sx=e.clientX;sy=e.clientY;ox=parseFloat(el.style.left);oy=parseFloat(el.style.top);
+    e.preventDefault(); });
+  grip.addEventListener('mousedown',e=>{ mode='resize'; sx=e.clientX;sy=e.clientY;
+    ow=parseFloat(el.style.width);oh=parseFloat(el.style.height); e.stopPropagation();e.preventDefault(); });
+  window.addEventListener('mousemove',e=>{ if(!mode)return;
+    if(mode==='move'){ el.style.left=Math.max(0,ox+e.clientX-sx)+'px'; el.style.top=Math.max(0,oy+e.clientY-sy)+'px'; }
+    else{ el.style.width=Math.max(30,ow+e.clientX-sx)+'px'; el.style.height=Math.max(16,oh+e.clientY-sy)+'px'; } });
+  window.addEventListener('mouseup',()=>mode=null);
+  el.addEventListener('click',e=>{select(el);});
+}
+document.addEventListener('keydown',e=>{ if((e.key==='Delete'||e.key==='Backspace')){
+  const s=document.querySelector('.field.sel'); if(s && !(document.activeElement&&document.activeElement.isContentEditable)){
+    s.remove(); state.fields=state.fields.filter(f=>f!==s);} }});
+
+/* ---------- signature modal ---------- */
+const sigModal=document.getElementById('sigModal'); let pad;
+function openSigModal(){ sigModal.classList.add('open'); setTimeout(initPad,30); renderSaved(); }
+function closeSigModal(){ sigModal.classList.remove('open'); }
+function initPad(){ const c=document.getElementById('sigpad'); const ratio=Math.max(window.devicePixelRatio||1,1);
+  c.width=c.offsetWidth*ratio; c.height=c.offsetHeight*ratio; c.getContext('2d').scale(ratio,ratio);
+  pad=new SignaturePad(c,{penColor:'#0B0B0C'}); }
+document.querySelectorAll('#sigModal .tabs button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#sigModal .tabs button').forEach(x=>x.classList.remove('active')); b.classList.add('active');
+  const draw=b.dataset.tab==='draw'; document.getElementById('drawWrap').style.display=draw?'':'none';
+  document.getElementById('typeWrap').style.display=draw?'none':''; });
+document.getElementById('typeInput').oninput=e=>document.getElementById('typePreview').textContent=e.target.value;
+document.getElementById('sigClear').onclick=()=>pad&&pad.clear();
+document.getElementById('sigCancel').onclick=closeSigModal;
+document.getElementById('sigSave').onclick=()=>{
+  const drawing=document.getElementById('drawWrap').style.display!=='none';
+  let url=null;
+  if(drawing){ if(pad&&!pad.isEmpty()) url=trimSig(document.getElementById('sigpad')); }
+  else{ const name=document.getElementById('typeInput').value.trim(); if(name) url=typedSig(name); }
+  if(!url){ alert('Draw or type a signature first.'); return; }
+  saveSig(url); state.currentSig=url; closeSigModal(); arm('sig');
+};
+document.getElementById('manageSig').onclick=openSigModal;
+
+/* trim whitespace around a drawn signature canvas -> transparent png */
+function trimSig(c){ const ctx=c.getContext('2d'),w=c.width,h=c.height,d=ctx.getImageData(0,0,w,h).data;
+  let x0=w,y0=h,x1=0,y1=0,found=false;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>10){found=true;x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y);} }
+  if(!found) return c.toDataURL('image/png');
+  const pad=8,ow=x1-x0+pad*2,oh=y1-y0+pad*2,o=document.createElement('canvas');o.width=ow;o.height=oh;
+  o.getContext('2d').drawImage(c,x0-pad,y0-pad,ow,oh,0,0,ow,oh); return o.toDataURL('image/png'); }
+function typedSig(name){ const c=document.createElement('canvas');c.width=600;c.height=160;const x=c.getContext('2d');
+  x.fillStyle='#0B0B0C';x.font='italic 72px "Segoe Script","Bradley Hand",cursive';x.textBaseline='middle';
+  x.fillText(name,10,90); return trimSig(c); }
+
+/* localStorage signature store */
+function getSigs(){ try{return JSON.parse(localStorage.getItem('oq_sigs')||'[]')}catch(e){return[]} }
+function saveSig(url){ const a=getSigs(); if(!a.includes(url)){a.unshift(url); localStorage.setItem('oq_sigs',JSON.stringify(a.slice(0,8)));} }
+function renderSaved(){ const box=document.getElementById('savedSigs'); box.innerHTML=''; const a=getSigs();
+  if(a.length) box.insertAdjacentHTML('beforeend','<div class="muted" style="width:100%">Saved (click to use):</div>');
+  a.forEach(url=>{ const c=document.createElement('div');c.className='chip';const im=new Image();im.src=url;c.appendChild(im);
+    c.onclick=()=>{state.currentSig=url;closeSigModal();arm('sig');}; box.appendChild(c); }); }
+
+/* ---------- export ---------- */
+document.getElementById('downloadBtn').onclick=exportPdf;
+async function exportPdf(){
+  if(!state.pdfBytes){alert('Open a PDF first.');return;}
+  const {PDFDocument,StandardFonts,rgb}=PDFLib;
+  const pdf=await PDFDocument.load(state.pdfBytes.slice(0));
+  const font=await pdf.embedFont(StandardFonts.Helvetica);
+  const pages=pdf.getPages();
+  for(const el of state.fields){
+    const pi=+el.dataset.page, pg=pages[pi], info=state.pages[pi], S=info.scale, ph=info.pdfH;
+    const left=parseFloat(el.style.left), top=parseFloat(el.style.top),
+          w=parseFloat(el.style.width), h=parseFloat(el.style.height);
+    if(el.dataset.type==='sig'){
+      const png=await pdf.embedPng(el.dataset.dataurl);
+      pg.drawImage(png,{x:left/S, y:ph-(top+h)/S, width:w/S, height:h/S});
+    } else {
+      const txt=el.querySelector('.txt').textContent;
+      const sizePx=parseFloat(getComputedStyle(el.querySelector('.txt')).fontSize)||15;
+      const size=sizePx/S;
+      pg.drawText(txt,{x:left/S+1, y:ph-(top/S)-size*0.95, size, font, color:rgb(0.043,0.043,0.047)});
+    }
+  }
+  const bytes=await pdf.save();
+  const blob=new Blob([bytes],{type:'application/pdf'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=(state.fileName||'document')+'-SIGNED.pdf'; a.click(); URL.revokeObjectURL(a.href);
+  hint('Downloaded signed.pdf ✓');
+}
+
+/* ---------- misc ---------- */
+function hint(t){ document.getElementById('hint').innerHTML=t; }
+function todayStr(){ const d=new Date(); return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }
+
+/* Done -> tell the launcher to shut down, then blank the page */
+document.getElementById('doneBtn').onclick=async()=>{
+  try{ await fetch('/__done'); }catch(e){}
+  document.body.innerHTML='<div style="padding:48px;font-family:sans-serif;color:#0B0B0C">'
+    +'<b>Signing session closed.</b><br><span style="color:#6E6E73">You can close this tab.</span></div>';
+};
+
+/* auto-load a PDF passed by the launcher.
+   - no-server (file://, Firefox): launcher wrote payload.js -> window.__PDF_B64
+   - server mode (Chrome/other): ?pdf=…&name=… fetched over loopback  */
+(function autoload(){
+  const q=new URLSearchParams(location.search);
+  async function load(buf, name){
+    state.pdfBytes=buf; state.fileName=name||'document'; await renderPdf(buf.slice(0));
+    hint('Loaded <b>'+state.fileName+'</b>. Click <b>My signatures</b> to sign, drop fields, then <b>Download signed PDF</b>.');
+  }
+  if(window.__PDF_B64){
+    try{ const bin=atob(window.__PDF_B64); const u=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+      load(u.buffer, window.__PDF_NAME); return;
+    }catch(e){ hint('Could not read the embedded PDF — use <b>Open PDF…</b>.'); return; }
+  }
+  const pdf=q.get('pdf');
+  if(pdf){ fetch(pdf).then(r=>r.arrayBuffer()).then(b=>load(b,q.get('name')))
+    .catch(()=>hint('Could not auto-load the PDF — use <b>Open PDF…</b> instead.')); }
+})();
+</script>
+</body>
+</html>

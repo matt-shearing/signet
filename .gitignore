@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.pdf
+*-SIGNED.pdf
+.DS_Store
+signet_*/
