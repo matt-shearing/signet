@@ -9,6 +9,6 @@ pkgbase = signet
 	optdepends = firefox: no-server signing via file://
 	optdepends = chromium: signing via an ephemeral loopback server
 	source = signet-1.0.0.tar.gz::https://github.com/matt-shearing/signet/archive/refs/tags/v1.0.0.tar.gz
-	sha256sums = SKIP
+	sha256sums = 0dbc108b137a48bcecd14c24f657bfd55dc649f476f4f26f49ea70f6205c6bef
 
 pkgname = signet

@@ -35,7 +35,7 @@ with `SIGNET_MODE=file` or `SIGNET_MODE=server`.
 
 ### Run ad-hoc (no install / for hacking on it)
 ```
-python3 signet.py some.pdf     # open that PDF straight into signing
+python3 signet.py sample/Sample-Agreement.pdf   # try it on the included demo doc
 ./sign.sh                      # or serve at http://localhost:8000
 ```
 
@@ -46,7 +46,7 @@ python3 signet.py some.pdf     # open that PDF straight into signing
 3. **Download signed PDF** → `<name>-SIGNED.pdf`. **Done** closes the session.
 
 ## Screenshots
-_(add images to `screenshots/` and reference them here)_
+_(add images to `screenshots/`. There's a public-safe demo doc at `sample/Sample-Agreement.pdf` to sign for them.)_
 
 ## How it works
 Single HTML page + three vendored, open-source libraries:
