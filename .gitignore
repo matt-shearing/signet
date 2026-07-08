@@ -4,3 +4,6 @@ __pycache__/
 *-SIGNED.pdf
 .DS_Store
 signet_*/
+
+# keep the demo doc
+!sample/Sample-Agreement.pdf
